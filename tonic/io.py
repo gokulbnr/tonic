@@ -5,10 +5,9 @@ from typing import BinaryIO, Optional, Union
 import numpy as np
 from numpy.lib import recfunctions
 
-events_struct = np.dtype(
-    [("x", np.int16), ("y", np.int16), ("t", np.int64), ("p", bool)]
-)
-
+events_struct = np.dtype([("x", np.int16), ("y", np.int16), ("t", np.int64), ("p", bool)])
+aps_struct = np.dtype([("x", np.int16), ("y", np.int16), ("data", np.float32), ("t", np.int64)])
+imu_struct = np.dtype([("accel_x", np.int16), ("accel_y", np.int16), ("accel_z", np.int16), ("temp", np.int16), ("gyro_x", np.int16), ("gyro_y", np.int16), ("gyro_z", np.int16), ("t", np.int64)])
 
 # many functions in this file have been copied from https://gitlab.com/synsense/aermanager/-/blob/master/aermanager/parsers.py
 def make_structured_array(*args, dtype=events_struct):
@@ -143,7 +142,7 @@ def read_dvs_red(filename):
     return shape, xytp
 
 
-def read_davis_346(filename):
+def read_davis_346(filename, string):
     """Get the aer events from DAVIS346 with resolution of (260, 346)
 
     Parameters:
@@ -156,18 +155,87 @@ def read_davis_346(filename):
         events: numpy structured array of events
     """
     data_version, data_start, start_timestamp = read_aedat_header_from_file(filename)
+    
     all_events = get_aer_events_from_file(filename, data_version, data_start)
     all_addr = all_events["address"]
-    t = all_events["timeStamp"]
+    t = start_timestamp * 1e3 + all_events["timeStamp"]
 
-    # x, y, and p : bit-shift and bit-mask values taken from jAER (https://github.com/SensorsINI/jaer)
-    x = (346 - 1) - ((all_addr & 4190208) >> 12)
-    y = (260 - 1) - ((all_addr & 2143289344) >> 22)
-    p = ((all_addr & 2048) >> 11)
+    del(all_events)
 
-    xytp = make_structured_array(x, y, t, p)
-    shape = (346, 260)
-    return shape, start_timestamp, xytp
+    # bit shifting and bit masking values taken from https://gitlab.com/inivation/inivation-docs/-/blob/master/Software%20user%20guides/AEDAT_file_formats.md
+    bit_31 = (all_addr >> 31) & 0b1
+    bit_11_10 = (all_addr >> 10) & 0b11
+    bit_30_28 = (all_addr >> 28) & 0b111
+    bit_27_12 = (all_addr >> 12) & 0xFFFFF
+    
+    # IMU data decodd butnot tested yet
+    imu_accel_x = np.where((bit_31 == 1) & (bit_11_10 == 0b11) & (bit_30_28 == 0b000))
+    imu_accel_y = np.where((bit_31 == 1) & (bit_11_10 == 0b11) & (bit_30_28 == 0b001))
+    imu_accel_z = np.where((bit_31 == 1) & (bit_11_10 == 0b11) & (bit_30_28 == 0b010))
+    imu_temp = np.where((bit_31 == 1) & (bit_11_10 == 0b11) & (bit_30_28 == 0b011))
+    imu_gyro_x = np.where((bit_31 == 1) & (bit_11_10 == 0b11) & (bit_30_28 == 0b100))
+    imu_gyro_y = np.where((bit_31 == 1) & (bit_11_10 == 0b11) & (bit_30_28 == 0b101))
+    imu_gyro_z = np.where((bit_31 == 1) & (bit_11_10 == 0b11) & (bit_30_28 == 0b110))
+
+    # total_events_read = len(dvs) + len(aps_reset) + len(aps_signal) + len(imu_accel_x) + len(imu_accel_y) + len(imu_accel_z) + len(imu_temp) + len(imu_gyro_x) + len(imu_gyro_y) + len(imu_gyro_z)
+    # assert len(dvs[0]) + len(aps_reset[0]) + len(aps_signal[0]) + len(imu_accel_x[0]) + len(imu_accel_y[0]) + len(imu_accel_z[0]) + len(imu_temp[0]) + len(imu_gyro_x[0]) + len(imu_gyro_y[0]) + len(imu_gyro_z[0]) == len(all_addr), "The number of events is not equal to the number of addresses."
+    # assert len(aps_reset[0]) == len(aps_signal[0]), "The number of reset events is not equal to the number of signal events."
+    # assert len(imu_accel_x[0]) == len(imu_accel_y[0]) == len(imu_accel_z[0]) == len(imu_temp[0]) == len(imu_gyro_x[0]) == len(imu_gyro_y[0]) == len(imu_gyro_z[0]), "The number of imu events is not equal."
+    # aps_x = (346 - 1) - (all_addr[aps_reset] >> 12) & 0x3FF
+    # imu_data_accel_x = ((all_addr[imu_accel_x] >> 12) & 0xFFF)
+    # imu_data_accel_y = ((all_addr[imu_accel_y] >> 12) & 0xFFF)
+    # imu_data_accel_z = ((all_addr[imu_accel_z] >> 12) & 0xFFF)
+    # imu_data_temp = ((all_addr[imu_temp] >> 12) & 0xFFF)
+    # imu_data_gyro_x = ((all_addr[imu_gyro_x] >> 12) & 0xFFF)
+    # imu_data_gyro_y = ((all_addr[imu_gyro_y] >> 12) & 0xFFF)
+    # imu_data_gyro_z = ((all_addr[imu_gyro_z] >> 12) & 0xFFF)
+
+    if string == 'dvs':
+
+        dvs = np.where(bit_31 == 0)
+        dvs_x = (346 - 1) - (all_addr[dvs] >> 12) & 0x3FF
+        dvs_y = (260 - 1) - (all_addr[dvs] >> 22) & 0x1FF
+        dvs_p = ((all_addr[dvs] & 2048) >> 11)
+        del(all_addr)
+
+        dvs_xytp = make_structured_array(dvs_x, dvs_y, t[dvs], dvs_p, dtype=events_struct)
+
+        if isinstance(dvs_xytp, int) and dvs_xytp == -1:
+            print('got -1 first')
+            return -1
+
+        del(dvs_x)
+        del(dvs_y)
+        del(dvs_p)
+        del(dvs)
+        shape = (346, 260)
+        return shape, dvs_xytp, None # , None # , imu_data
+
+    elif string == 'aps':
+
+        aps_reset = np.where((bit_31 == 1) & (bit_11_10 == 0b00))
+        aps_signal = np.where((bit_31 == 1) & (bit_11_10 == 0b01))
+        aps_adc_reset = (all_addr[aps_reset] & 0x3FF)
+        aps_reset_x = (346 - 1) - (all_addr[aps_reset] >> 12) & 0x3FF
+        aps_reset_y = (260 - 1) - (all_addr[aps_reset] >> 22) & 0x1FF
+        aps_signal_x = (346 - 1) - (all_addr[aps_signal] >> 12) & 0x3FF
+        aps_signal_y = (260 - 1) - (all_addr[aps_signal] >> 22) & 0x1FF
+        aps_adc_signal = (all_addr[aps_signal] & 0x3FF)
+        del(all_addr)
+
+        aps_data_reset = make_structured_array(aps_reset_x, aps_reset_y, aps_adc_reset, t[aps_reset], dtype=aps_struct)
+        aps_data_signal = make_structured_array(aps_signal_x, aps_signal_y, aps_adc_signal, t[aps_signal], dtype=aps_struct)
+
+        del(aps_signal)
+        del(aps_adc_reset)
+        del(aps_adc_signal)
+        del(aps_reset_x)
+        del(aps_reset_y)
+        # aps_data_signal = make_structured_array(aps_signal_x, aps_signal_y, aps_adc_signal, t[aps_signal], dtype=aps_struct)
+        shape = (346, 260)
+        return shape, None, aps_data_reset, aps_data_signal # , imu_data
+    else:
+        print('None')
 
 
 def read_dvs_346mini(filename):
