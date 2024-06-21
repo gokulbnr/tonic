@@ -84,9 +84,9 @@ class SliceByTime:
         assert stride > 0
 
         if self.include_incomplete:
-            n_slices = int(np.ceil(((t[-1] - t[0]) - self.time_window) / stride) + 1)
+            n_slices = int(np.ceil(((t[len(t)-1] - t[0]) - self.time_window) / stride) + 1)
         else:
-            n_slices = int(np.floor(((t[-1] - t[0]) - self.time_window) / stride) + 1)
+            n_slices = int(np.floor(((t[len(t)-1] - t[0]) - self.time_window) / stride) + 1)
         n_slices = max(n_slices, 1)  # for strides larger than recording time
 
         window_start_times = np.arange(n_slices) * stride + t[0]
@@ -130,7 +130,7 @@ class SliceByTimeBins:
         assert self.overlap < 1
 
         times = events["t"]
-        time_window = (times[-1] - times[0]) // self.bin_count * (1 + self.overlap)
+        time_window = (times[len(times)-1] - times[0]) // self.bin_count * (1 + self.overlap)
         stride = time_window * (1 - self.overlap)
 
         window_start_times = np.arange(self.bin_count) * stride + times[0]

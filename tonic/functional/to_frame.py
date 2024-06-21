@@ -1,10 +1,9 @@
 import numpy as np
-
 from tonic.slicers import (
-    slice_events_by_count,
-    slice_events_by_event_bins,
     slice_events_by_time,
+    slice_events_by_count,
     slice_events_by_time_bins,
+    slice_events_by_event_bins,
 )
 
 
@@ -18,8 +17,8 @@ def to_frame_numpy(
     overlap=0.0,
     include_incomplete=False,
 ):
-    """Accumulate events to frames by slicing along constant time (time_window), constant number of
-    events (event_count) or constant number of frames (n_time_bins / n_event_bins).
+    """Accumulate events to frames by slicing along constant time (time_window),
+    constant number of events (event_count) or constant number of frames (n_time_bins / n_event_bins).
 
     Parameters:
         events: ndarray of shape [num_events, num_event_channels]
@@ -34,7 +33,9 @@ def to_frame_numpy(
     Returns:
         numpy array with dimensions (TxPxHxW)
     """
-    assert "x" and "t" and "p" in events.dtype.names
+
+
+    assert 'x' and 't' and 'p' in events.columns
 
     if (
         not sum(
@@ -51,7 +52,7 @@ def to_frame_numpy(
     if not sensor_size:
         sensor_size_x = int(events["x"].max() + 1)
         sensor_size_p = len(np.unique(events["p"]))
-        if "y" in events.dtype.names:
+        if "y" in events.columns:
             sensor_size_y = int(events["y"].max() + 1)
             sensor_size = (sensor_size_x, sensor_size_y, sensor_size_p)
         else:
@@ -59,10 +60,6 @@ def to_frame_numpy(
 
     # test for single polarity
     if sensor_size[2] == 1:
-        if np.unique(events["p"]).size > 1:
-            raise ValueError(
-                "Single polarity sensor, but events contain both polarities."
-            )
         events["p"] = 0
 
     if time_window:
@@ -78,7 +75,7 @@ def to_frame_numpy(
     elif n_event_bins:
         event_slices = slice_events_by_event_bins(events, n_event_bins, overlap=overlap)
 
-    if "y" in events.dtype.names:
+    if "y" in events.columns:
         frames = np.zeros((len(event_slices), *sensor_size[::-1]), dtype=np.int16)
         for i, event_slice in enumerate(event_slices):
             np.add.at(
