@@ -158,8 +158,7 @@ def read_davis_346(filename, string):
     
     all_events = get_aer_events_from_file(filename, data_version, data_start)
     all_addr = all_events["address"]
-    t = start_timestamp * 1e3 + all_events["timeStamp"]
-
+    t = start_timestamp * 1e3 + (all_events["timeStamp"] - all_events["timeStamp"][0])
     del(all_events)
 
     # bit shifting and bit masking values taken from https://gitlab.com/inivation/inivation-docs/-/blob/master/Software%20user%20guides/AEDAT_file_formats.md
